@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os.path
+
+
 class Logger:
     def __init__(
         self,
@@ -9,9 +12,14 @@ class Logger:
         self.headers = headers
         self.filename = filename
 
+        dir =  f"{os.path.expanduser('~')}/.ros/log/sgaar"
+
+        if not os.path.exists(dir):
+            os.makedirs(dir)  
         self.file = open(
-            f"/home/thomas/.ros/log/seagraves_unmanned_systems_pkg/{self.filename}", 
+            f"{dir}/{self.filename}",
             "w+")
+        
         self.log(self.headers)
 
     def log(self, data: list) -> None:
