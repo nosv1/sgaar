@@ -12,9 +12,9 @@ from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import LaserScan
 
 # personal imports
-from support_module.DetectedObject import DetectedObject
-from support_module.Logger import Logger
-from support_module.Point import Point as support_module_Point
+from sgaar.DetectedObject import DetectedObject
+from sgaar.Logger import Logger
+from sgaar.Point import Point as support_module_Point
 
 class Turtle(Node):
     def __init__(self, namespace='', name='Turtle') -> None:
