@@ -1,5 +1,3 @@
-#!usr/env/bin python3
-
 # python imports
 from math import degrees, isinf, radians
 from array import array
@@ -25,13 +23,13 @@ class Turtle(Node):
         self.namespace = namespace
         self.name = name
 
-         # # # cmd_vel # # # 
+        # # # cmd_vel # # # 
         self.cmd_vel_publisher: Publisher = self.create_publisher(
             Twist, f"{namespace}/cmd_vel", 10)
 
         self.twist: Twist = Twist()
 
-         # # # odom # # # 
+        # # # odom # # # 
         self.odom_subscriber: Subscription = self.create_subscription(
             Odometry, f"{namespace}/odom", self.__odom_callback, 10)
 
@@ -44,7 +42,7 @@ class Turtle(Node):
         self.yaw: float = 0.0
         self.odom_dt = 0.0
 
-         # # # clock # # # 
+        # # # clock # # # 
         self.clock_subscriber: Subscription = self.create_subscription(
             Clock, f"{namespace}/clock", self.__clock_callback, 10)
 
@@ -56,7 +54,7 @@ class Turtle(Node):
         self.sim_start_time: float = None
         self.sim_elapsed_time: float = 0.0
 
-         # # # lidar # # # 
+        # # # lidar # # # 
         self.lidar_subscriber: Subscription = self.create_subscription(
             LaserScan, f"{namespace}/scan", self.__lidar_callback, 10)
 
@@ -77,7 +75,7 @@ class Turtle(Node):
 
         self.last_callback = FileNotFoundError
 
-         # # # loggers # # # 
+        # # # loggers # # # 
         self.command_logger = Logger(
             headers=["time", "linear_x", "linear_y", "linear_z", "angular_x", "angular_y", "angular_z"], 
             filename=f"{name}_command_log.csv")
@@ -196,3 +194,11 @@ class Turtle(Node):
         self.heading_logger.close()
         self.pose_logger.close()
         self.lidar_logger.close()
+
+    def dump_point_cloud(self, filename: str) -> None:
+        print(f"Dumping point cloud to {filename}")
+        with open(filename, 'w') as f:
+            f.writelines([
+                "x,y,z\n",
+                "\n".join([f"{obj.x},{obj.y},{obj.z}" for obj in self.detected_objects])
+            ])

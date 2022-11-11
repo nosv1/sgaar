@@ -1,4 +1,4 @@
-#!usr/env/bin python3
+#!/usr/bin/env python3
 
 from __future__ import annotations
 
@@ -119,6 +119,7 @@ def main() -> None:
             break
 
         if round(tester.sim_elapsed_time) % 10 == 0:
+            print(tester.sim_elapsed_time)
             tester.dump_point_cloud(filename=f"{tester.name}_point_cloud.csv")
 
     tester.close_logs()
