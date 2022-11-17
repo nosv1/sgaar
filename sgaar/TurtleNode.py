@@ -1,6 +1,7 @@
 # python imports
-from math import degrees, isinf, radians
 from array import array
+from math import degrees, isinf, radians
+import numpy as np
 
 # ros2 imports
 from geometry_msgs.msg import Point, Quaternion, Twist
@@ -65,7 +66,7 @@ class Turtle(Node):
 
         # # # occupancy grid # # # 
         self.occupancy_grid_subscriber: Subscription = self.create_subscription(
-            OccupancyGrid, f"{namespace}/map", self.__occupancy_grid_callback, 10)
+            OccupancyGrid, f"/map", self.__occupancy_grid_callback, 10)
 
         self.check_topic_available(self.occupancy_grid_subscriber)
 
@@ -164,7 +165,9 @@ class Turtle(Node):
         self.occupancy_grid_dt = self.current_wall_time - self.previous_wall_time
         
         self.map_meta_data = msg.info
-        self.map = msg.data
+        self.map = (np.array(msg.data)
+            .reshape(self.map_meta_data.height, self.map_meta_data.width))
+        return None
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     # Publishers
@@ -187,7 +190,6 @@ class Turtle(Node):
     def set_time(self) -> None:
         self.previous_wall_time = self.current_wall_time
         self.current_wall_time = self.get_clock().now().nanoseconds / 1e9
-
 
     def close_logs(self) -> None:
         self.command_logger.close()
