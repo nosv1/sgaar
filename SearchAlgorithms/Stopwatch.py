@@ -10,7 +10,7 @@ class Stopwatch:
         """
         Returns the ellapsed time in seconds
         """
-        return self.end - self.start_time
+        return self.end_time - self.start_time
 
     def start(self) -> None:
         """
@@ -22,4 +22,4 @@ class Stopwatch:
         """
         Stops the stopwatch
         """
-        self.end = time.perf_counter()
+        self.end_time = time.perf_counter()

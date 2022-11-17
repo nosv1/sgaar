@@ -96,4 +96,5 @@ class Obstacle(Node):
         :param node: node to check
         :return: True if the point is inside the obstacle, False otherwise
         """
-        return self.distance_to(node) <= self.radius
+        distance: float = self.distance_to(node)
+        return distance <= self.radius + 0.00001

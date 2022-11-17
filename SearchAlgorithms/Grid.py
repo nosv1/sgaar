@@ -1,6 +1,6 @@
 from __future__ import annotations
+
 import numpy as np
-import random
 
 from .Node import Node
 from .Obstacle import Obstacle
@@ -97,7 +97,7 @@ class Grid:
             not self.node_in_obstacle(node)
         )
 
-    def set_nodes(self, percision: float = 3):
+    def set_nodes(self):
         """
         Sets the valid and invalid nodes in the grid
         """
@@ -116,8 +116,8 @@ class Grid:
                 self.min_y, self.max_y + self.grid_spacing, self.grid_spacing
             ):
                 node = Node(
-                    x=round(row, percision),
-                    y=round(col, percision),
+                    x=row,
+                    y=col
                 )
 
                 if node.id not in self._invalid_nodes:
