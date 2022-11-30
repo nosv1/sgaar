@@ -14,6 +14,7 @@ import cv2
 
 # ros2 imports
 import rclpy
+from geometry_msgs.msg import Point
 
 # personal imports
 from post_processing.Colors import Colors
@@ -21,7 +22,7 @@ from sgaar.Logger import Logger
 from sgaar.math_tools import clamp
 from sgaar.Grid import Grid
 from sgaar.PID import PID
-from sgaar.Point import Point
+from sgaar.Point import Point as sgaar_Point
 from sgaar.quaternion_tools import euler_from_quaternion
 from sgaar.TurtleNode import Turtle as TurtleNode
 
@@ -43,36 +44,49 @@ class Turtle(TurtleNode):
     def on_odom_callback(self) -> None:
         return
     
-    def on_occupancy_grid_callback(self) -> None:
-        plot self.map
-        fig, ax = plt.subplots()
-        # mirror map
-        self.map = np.flip(self.map, axis=0)
-        # rotate map 90 degrees
-        self.map = np.rot90(self.map, k=1, axes=(0, 1))
+    def on_global_costmap_subscriber(self) -> None:
+
+        # # mirror map
+        # self.map = np.flip(self.map, axis=0)
+        # #rotate map 90 degrees
+        # self.map = np.rot90(self.map, k=1, axes=(0, 1))
         threshold = 90
-        ax.imshow(self.map > threshold, cmap='gray')
+        plt.imshow(self.map > threshold, cmap='gray', )
+
+        origin_in_pixels = (self.origin.x / -0.05, self.origin.y / -0.05, 0.0)
+        print(self.position)
+
+        # plot origin
+        plt.scatter(origin_in_pixels[0], origin_in_pixels[1], c='r')
+
+        if self.position != Point():
+            pos_in_pixels = (self.position.x / -0.05, self.position.y / -0.05)
+            # translate pos relative to origin
+            pos_in_pixels = (origin_in_pixels[0] - pos_in_pixels[0], origin_in_pixels[1] - pos_in_pixels[1])
+           
+            
+            # plot position
+            plt.scatter(pos_in_pixels[0], pos_in_pixels[1], c='g')
+
         plt.show()
 
         return None
     
     def on_local_footprint_callback(self) -> None:
-        fig, ax = plt.subplots()
+        pass
+        # fig, ax = plt.subplots()
 
-        for point in self.local_costmap_footprint.polygon.points:
-            ax.scatter(point.x, point.y, c='r')
+        # for point in self.local_costmap_footprint.polygon.points:
+        #     ax.scatter(point.x, point.y, c='r')
         
-        plt.show()
+        # plt.show()
 
     def update(self) -> None:
+        if self.last_callback == self.__odom_callback:
+            self.on_odom_callback()
 
-        print(self.last_callback)
-
-        # if self.last_callback == self.__odom_callback:
-        #     self.on_odom_callback()
-
-        if self.last_callback == self.__occupancy_grid_callback:
-            self.on_occupancy_grid_callback()
+        if self.last_callback == self.__global_costmap_callback:
+            self.on_global_costmap_subscriber()
         
         if self.last_callback == self.__local_costmap_footprint_callback:
             self.on_local_footprint_callback()
@@ -94,9 +108,8 @@ def main():
     for subscription in invader.subscriptions:
         if subscription.topic_name == f"{invader.namespace}/odom":
             invader.destroy_subscription(subscription)
-         
-        elif subscription.topic_name == f"{invader.namespace}/clock":
-            invader.destroy_subscription(subscription)
+
+    
 
     while rclpy.ok():
         rclpy.spin_once(invader)

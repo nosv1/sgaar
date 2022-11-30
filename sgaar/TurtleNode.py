@@ -4,7 +4,7 @@ from math import degrees, isinf, radians
 import numpy as np
 
 # ros2 imports
-from geometry_msgs.msg import Point, PolygonStamped, Quaternion, Twist
+from geometry_msgs.msg import Point, PolygonStamped, PoseWithCovarianceStamped, Quaternion, Twist
 from nav_msgs.msg import MapMetaData, OccupancyGrid, Odometry
 from rclpy.node import Node
 from rclpy.publisher import Publisher
@@ -13,7 +13,7 @@ from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import LaserScan
 
 # personal imports
-from sgaar.DetectedObject import detect_objects
+# from sgaar.DetectedObject import detect_objects
 from sgaar.DetectedObject import DetectedObject
 from sgaar.Logger import Logger
 from sgaar.Point import Point as support_module_Point
@@ -62,21 +62,25 @@ class Turtle(Node):
 
         self.check_topic_available(self.lidar_subscriber)
 
-        self.detected_objects: list[DetectedObject] = []
+        # self.detected_objects: list[DetectedObject] = []
         self.lidar_dt = 0.0
 
         # # # occupancy grid # # # 
-        self.occupancy_grid_subscriber: Subscription = self.create_subscription(
-            OccupancyGrid, f"/local_costmap/costmap", self.__occupancy_grid_callback, 10)
+        self.global_costmap_subscriber: Subscription = self.create_subscription(
+            OccupancyGrid, f"/global_costmap/costmap", self.__global_costmap_callback, 10)
         
         self.local_costmap_footprint_subscriber: Subscription = self.create_subscription(
             PolygonStamped, f"/global_costmap/published_footprint", self.__local_costmap_footprint_callback, 10)
+        
+        self.amcl_pose_subscriber: Subscription = self.create_subscription(
+            PoseWithCovarianceStamped, f"/amcl_pose", self.__amcl_pose_callback, 10)
 
 
-        self.check_topic_available(self.occupancy_grid_subscriber)
+        self.check_topic_available(self.global_costmap_subscriber)
 
         self.map_meta_data: MapMetaData = MapMetaData()
         self.map: array[int] = array('i')
+        self.origin: Point = Point()
         self.local_costmap_footprint: PolygonStamped = PolygonStamped()
         self.occupancy_grid_dt = 0.0
 
@@ -145,7 +149,7 @@ class Turtle(Node):
         self.set_time()
         self.lidar_dt = self.current_wall_time - self.previous_wall_time
 
-        self.detected_objects: list[DetectedObject] = []
+        # self.detected_objects: list[DetectedObject] = []
         for i, distance in enumerate(msg.ranges):
             if not isinf(distance):
                 angle: float = radians(float(i if i < 180 else i - 360))
@@ -159,16 +163,18 @@ class Turtle(Node):
                 #     current_yaw=self.yaw)
                 # self.detected_objects.append(detected_object)
 
-        self.lidar_logger.log([
-            self.get_clock().now().nanoseconds / 1e9,
-            len(self.detected_objects)
-        ])
+        # self.lidar_logger.log([
+        #     self.get_clock().now().nanoseconds / 1e9,
+        #     len(self.detected_objects)
+        # ])
 
-    def __occupancy_grid_callback(self, msg: OccupancyGrid) -> None:
-        self.last_callback = self.__occupancy_grid_callback
+    def __global_costmap_callback(self, msg: OccupancyGrid) -> None:
+        self.last_callback = self.__global_costmap_callback
 
         self.set_time()
         self.occupancy_grid_dt = self.current_wall_time - self.previous_wall_time
+
+        self.origin = msg.info.origin.position
         
         self.map_meta_data = msg.info
         self.map = (np.array(msg.data)
@@ -177,10 +183,33 @@ class Turtle(Node):
         return None
     
     def __local_costmap_footprint_callback(self, msg: PolygonStamped) -> None:
-        print("local_costmap_footprint_callback")
         self.last_callback = self.__local_costmap_footprint_callback
 
         self.local_costmap_footprint = msg
+
+        return None
+    
+    def __amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
+        print("amcl_pose_callback")
+        self.last_callback = self.__amcl_pose_callback            
+        
+        self.position = Point(
+            x=msg.pose.pose.position.x,
+            y=msg.pose.pose.position.y
+        )
+        self.orientation = msg.pose.pose.orientation
+        self.set_time()
+        self.odom_dt = self.current_wall_time - self.previous_wall_time
+
+        self.pose_logger.log([
+            self.get_clock().now().nanoseconds / 1e9, 
+            self.position.x, 
+            self.position.y, 
+            self.position.z, 
+            degrees(self.roll),
+            degrees(self.pitch),
+            degrees(self.yaw)
+        ])
 
         return None
 
