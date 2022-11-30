@@ -4,7 +4,7 @@ from math import degrees, isinf, radians
 import numpy as np
 
 # ros2 imports
-from geometry_msgs.msg import Point, Quaternion, Twist
+from geometry_msgs.msg import Point, PolygonStamped, Quaternion, Twist
 from nav_msgs.msg import MapMetaData, OccupancyGrid, Odometry
 from rclpy.node import Node
 from rclpy.publisher import Publisher
@@ -13,6 +13,7 @@ from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import LaserScan
 
 # personal imports
+from sgaar.DetectedObject import detect_objects
 from sgaar.DetectedObject import DetectedObject
 from sgaar.Logger import Logger
 from sgaar.Point import Point as support_module_Point
@@ -66,12 +67,17 @@ class Turtle(Node):
 
         # # # occupancy grid # # # 
         self.occupancy_grid_subscriber: Subscription = self.create_subscription(
-            OccupancyGrid, f"/map", self.__occupancy_grid_callback, 10)
+            OccupancyGrid, f"/local_costmap/costmap", self.__occupancy_grid_callback, 10)
+        
+        self.local_costmap_footprint_subscriber: Subscription = self.create_subscription(
+            PolygonStamped, f"/global_costmap/published_footprint", self.__local_costmap_footprint_callback, 10)
+
 
         self.check_topic_available(self.occupancy_grid_subscriber)
 
         self.map_meta_data: MapMetaData = MapMetaData()
         self.map: array[int] = array('i')
+        self.local_costmap_footprint: PolygonStamped = PolygonStamped()
         self.occupancy_grid_dt = 0.0
 
         self.last_callback = FileNotFoundError
@@ -143,15 +149,15 @@ class Turtle(Node):
         for i, distance in enumerate(msg.ranges):
             if not isinf(distance):
                 angle: float = radians(float(i if i < 180 else i - 360))
-                detected_object: DetectedObject = DetectedObject(
-                    distance=distance, 
-                    angle=angle, 
-                    current_position=support_module_Point(
-                        x=self.position.x, 
-                        y=self.position.y, 
-                        z=0), 
-                    current_yaw=self.yaw)
-                self.detected_objects.append(detected_object)
+                # detected_object: DetectedObject = DetectedObject(
+                #     distance=distance, 
+                #     angle=angle, 
+                #     current_position=support_module_Point(
+                #         x=self.position.x, 
+                #         y=self.position.y, 
+                #         z=0), 
+                #     current_yaw=self.yaw)
+                # self.detected_objects.append(detected_object)
 
         self.lidar_logger.log([
             self.get_clock().now().nanoseconds / 1e9,
@@ -167,7 +173,18 @@ class Turtle(Node):
         self.map_meta_data = msg.info
         self.map = (np.array(msg.data)
             .reshape(self.map_meta_data.height, self.map_meta_data.width))
+        
         return None
+    
+    def __local_costmap_footprint_callback(self, msg: PolygonStamped) -> None:
+        print("local_costmap_footprint_callback")
+        self.last_callback = self.__local_costmap_footprint_callback
+
+        self.local_costmap_footprint = msg
+
+        return None
+
+
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     # Publishers
@@ -196,11 +213,3 @@ class Turtle(Node):
         self.heading_logger.close()
         self.pose_logger.close()
         self.lidar_logger.close()
-
-    def dump_point_cloud(self, filename: str) -> None:
-        print(f"Dumping point cloud to {filename}")
-        with open(filename, 'w') as f:
-            f.writelines([
-                "x,y,z\n",
-                "\n".join([f"{obj.x},{obj.y},{obj.z}" for obj in self.detected_objects])
-            ])

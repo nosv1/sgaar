@@ -34,6 +34,7 @@ ament_python_install_package(post_processing)
 # Install Python executables
 install(PROGRAMS
   scripts/turtlebot_tester.py
+  scripts/invader.py
   DESTINATION lib/${PROJECT_NAME}
 )
 ament_package()
