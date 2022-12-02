@@ -35,18 +35,27 @@ class Turtle(Node):
         self.odom_subscriber: Subscription = self.create_subscription(
             Odometry, f"{namespace}/odom", self.__odom_callback, 10)
 
-        self.check_topic_available(self.odom_subscriber)
-
-        self.position: Point = Point()
-        self.orientation: Quaternion = Quaternion()
-        self.roll: float = 0.0
-        self.pitch: float = 0.0
-        self.yaw: float = 0.0
+        self.odom_position: Point = Point()
+        self.odom_orientation: Quaternion = Quaternion()
+        self.odom_roll: float = 0.0
+        self.odom_pitch: float = 0.0
+        self.odom_yaw: float = 0.0
+        self.odom_timestamp: float = 0.0
         self.odom_dt = 0.0
+
+        self.check_topic_available(self.odom_subscriber)
 
         # # # amcl_pose # # #
         self.amcl_pose_subscriber: Subscription = self.create_subscription(
             PoseWithCovarianceStamped, f"/amcl_pose", self.__amcl_pose_callback, 10)
+
+        self.amcl_position: Point = Point()
+        self.amcl_orientation: Quaternion = Quaternion()
+        self.amcl_roll: float = 0.0
+        self.amcl_pitch: float = 0.0
+        self.amcl_yaw: float = 0.0
+        self.amcl_timestamp: float = 0.0
+        self.amcl_dt = 0.0
 
         self.check_topic_available(self.amcl_pose_subscriber)
 
@@ -54,34 +63,36 @@ class Turtle(Node):
         self.clock_subscriber: Subscription = self.create_subscription(
             Clock, f"{namespace}/clock", self.__clock_callback, 10)
 
-        self.check_topic_available(self.clock_subscriber)
-
         self.previous_wall_time: float = 0.0
         self.current_wall_time: float = self.get_clock().now().nanoseconds / 1e9
         self.sim_current_time: float = 0.0
         self.sim_start_time: float = None
         self.sim_elapsed_time: float = 0.0
 
+        self.check_topic_available(self.clock_subscriber)
+
         # # # lidar # # # 
         self.lidar_subscriber: Subscription = self.create_subscription(
             LaserScan, f"{namespace}/scan", self.__lidar_callback, 10)
 
-        self.check_topic_available(self.lidar_subscriber)
-
         # self.detected_objects: list[DetectedObject] = []
+        self.lidar_timestamp: float = 0.0
         self.lidar_dt = 0.0
+
+        self.check_topic_available(self.lidar_subscriber)
 
         # # # occupancy grid # # # 
         self.global_costmap_subscriber: Subscription = self.create_subscription(
             OccupancyGrid, f"/global_costmap/costmap", self.__global_costmap_callback, 10)
 
-        self.check_topic_available(self.global_costmap_subscriber)
-
         self.map_meta_data: MapMetaData = MapMetaData()
         self.map_image: np.ndarray[np.ndarray[int]] = np.ndarray(shape=(0, 0), dtype=int)
         self.map_origin: Point = Point()
         self.local_costmap_footprint: PolygonStamped = PolygonStamped()
+        self.occupancy_grid_timestamp: float = 0.0
         self.occupancy_grid_dt = 0.0
+
+        self.check_topic_available(self.global_costmap_subscriber)
 
         self.last_callback = FileNotFoundError
 
@@ -112,44 +123,51 @@ class Turtle(Node):
     def __odom_callback(self, msg: Odometry) -> None:
         self.last_callback = self.__odom_callback
 
-        self.position = Point(
+        self.odom_position = Point(
             x=msg.pose.pose.position.x,
             y=msg.pose.pose.position.y
         )
         self.orientation = msg.pose.pose.orientation
         self.set_time()
-        self.odom_dt = self.current_wall_time - self.previous_wall_time
+        self.odom_dt = self.current_wall_time - self.odom_timestamp
+        self.odom_timestamp = self.current_wall_time
 
         self.pose_logger.log([
             self.get_clock().now().nanoseconds / 1e9, 
-            self.position.x, 
-            self.position.y, 
-            self.position.z, 
-            degrees(self.roll),
-            degrees(self.pitch),
-            degrees(self.yaw)
+            self.odom_position.x, 
+            self.odom_position.y, 
+            self.odom_position.z, 
+            degrees(self.odom_roll),
+            degrees(self.odom_pitch),
+            degrees(self.odom_yaw)
         ])
     
     def __amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
-        print("amcl_pose_callback")
         self.last_callback = self.__amcl_pose_callback            
-        
+    
         self.position = Point(
-            x=msg.pose.pose.position.x,
-            y=msg.pose.pose.position.y
+            x=self.map_origin.x - msg.pose.pose.position.x,
+            y=self.map_origin.y - msg.pose.pose.position.y,
+            z=self.map_origin.z - msg.pose.pose.position.z
         )
+        print(self.position)
+        # self.position = Point(
+        #     x=msg.pose.pose.position.x,
+        #     y=msg.pose.pose.position.y
+        # )
         self.orientation = msg.pose.pose.orientation
         self.set_time()
-        self.odom_dt = self.current_wall_time - self.previous_wall_time
+        self.amcl_dt = self.current_wall_time - self.amcl_timestamp
+        self.amcl_timestamp = self.current_wall_time
 
         self.pose_logger.log([
             self.get_clock().now().nanoseconds / 1e9, 
             self.position.x, 
             self.position.y, 
             self.position.z, 
-            degrees(self.roll),
-            degrees(self.pitch),
-            degrees(self.yaw)
+            degrees(self.amcl_roll),
+            degrees(self.amcl_pitch),
+            degrees(self.amcl_yaw)
         ])
 
         return None
@@ -170,7 +188,8 @@ class Turtle(Node):
         self.last_callback = self.__lidar_callback
 
         self.set_time()
-        self.lidar_dt = self.current_wall_time - self.previous_wall_time
+        self.lidar_dt = self.current_wall_time - self.lidar_timestamp
+        self.lidar_timestamp = self.current_wall_time
 
         # self.detected_objects: list[DetectedObject] = []
         for i, distance in enumerate(msg.ranges):
@@ -195,7 +214,8 @@ class Turtle(Node):
         self.last_callback = self.__global_costmap_callback
 
         self.set_time()
-        self.occupancy_grid_dt = self.current_wall_time - self.previous_wall_time
+        self.occupancy_grid_dt = self.current_wall_time - self.occupancy_grid_timestamp
+        self.occupancy_grid_timestamp = self.current_wall_time
 
         self.map_origin = msg.info.origin.position
         
