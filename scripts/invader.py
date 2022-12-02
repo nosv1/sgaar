@@ -47,13 +47,14 @@ class Turtle(TurtleNode):
     def on_global_costmap_subscriber(self) -> None:
 
         # # mirror map
-        # self.map = np.flip(self.map, axis=0)
+        # self.map_image = np.flip(self.map_image, axis=0)
         # #rotate map 90 degrees
-        # self.map = np.rot90(self.map, k=1, axes=(0, 1))
+        # self.map_image = np.rot90(self.map_image, k=1, axes=(0, 1))
         threshold = 90
-        plt.imshow(self.map > threshold, cmap='gray', )
+        plt.clf()
+        plt.imshow(self.map_image > threshold, cmap='gray', )
 
-        origin_in_pixels = (self.origin.x / -0.05, self.origin.y / -0.05, 0.0)
+        origin_in_pixels = (self.map_origin.x / -0.05, self.map_origin.y / -0.05, 0.0)
         print(self.position)
 
         # plot origin
@@ -67,19 +68,9 @@ class Turtle(TurtleNode):
             
             # plot position
             plt.scatter(pos_in_pixels[0], pos_in_pixels[1], c='g')
-
-        plt.show()
+            plt.pause(0.05)
 
         return None
-    
-    def on_local_footprint_callback(self) -> None:
-        pass
-        # fig, ax = plt.subplots()
-
-        # for point in self.local_costmap_footprint.polygon.points:
-        #     ax.scatter(point.x, point.y, c='r')
-        
-        # plt.show()
 
     def update(self) -> None:
         if self.last_callback == self.__odom_callback:
@@ -87,9 +78,6 @@ class Turtle(TurtleNode):
 
         if self.last_callback == self.__global_costmap_callback:
             self.on_global_costmap_subscriber()
-        
-        if self.last_callback == self.__local_costmap_footprint_callback:
-            self.on_local_footprint_callback()
 
         return None
 
@@ -107,9 +95,7 @@ def main():
 
     for subscription in invader.subscriptions:
         if subscription.topic_name == f"{invader.namespace}/odom":
-            invader.destroy_subscription(subscription)
-
-    
+            invader.destroy_subscription(subscription)    
 
     while rclpy.ok():
         rclpy.spin_once(invader)

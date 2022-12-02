@@ -44,6 +44,12 @@ class Turtle(Node):
         self.yaw: float = 0.0
         self.odom_dt = 0.0
 
+        # # # amcl_pose # # #
+        self.amcl_pose_subscriber: Subscription = self.create_subscription(
+            PoseWithCovarianceStamped, f"/amcl_pose", self.__amcl_pose_callback, 10)
+
+        self.check_topic_available(self.amcl_pose_subscriber)
+
         # # # clock # # # 
         self.clock_subscriber: Subscription = self.create_subscription(
             Clock, f"{namespace}/clock", self.__clock_callback, 10)
@@ -68,19 +74,12 @@ class Turtle(Node):
         # # # occupancy grid # # # 
         self.global_costmap_subscriber: Subscription = self.create_subscription(
             OccupancyGrid, f"/global_costmap/costmap", self.__global_costmap_callback, 10)
-        
-        self.local_costmap_footprint_subscriber: Subscription = self.create_subscription(
-            PolygonStamped, f"/global_costmap/published_footprint", self.__local_costmap_footprint_callback, 10)
-        
-        self.amcl_pose_subscriber: Subscription = self.create_subscription(
-            PoseWithCovarianceStamped, f"/amcl_pose", self.__amcl_pose_callback, 10)
-
 
         self.check_topic_available(self.global_costmap_subscriber)
 
         self.map_meta_data: MapMetaData = MapMetaData()
-        self.map: array[int] = array('i')
-        self.origin: Point = Point()
+        self.map_image: np.ndarray[np.ndarray[int]] = np.ndarray(shape=(0, 0), dtype=int)
+        self.map_origin: Point = Point()
         self.local_costmap_footprint: PolygonStamped = PolygonStamped()
         self.occupancy_grid_dt = 0.0
 
@@ -130,6 +129,30 @@ class Turtle(Node):
             degrees(self.pitch),
             degrees(self.yaw)
         ])
+    
+    def __amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
+        print("amcl_pose_callback")
+        self.last_callback = self.__amcl_pose_callback            
+        
+        self.position = Point(
+            x=msg.pose.pose.position.x,
+            y=msg.pose.pose.position.y
+        )
+        self.orientation = msg.pose.pose.orientation
+        self.set_time()
+        self.odom_dt = self.current_wall_time - self.previous_wall_time
+
+        self.pose_logger.log([
+            self.get_clock().now().nanoseconds / 1e9, 
+            self.position.x, 
+            self.position.y, 
+            self.position.z, 
+            degrees(self.roll),
+            degrees(self.pitch),
+            degrees(self.yaw)
+        ])
+
+        return None
 
     def __clock_callback(self, msg: Clock) -> None:
         self.last_callback = self.__clock_callback
@@ -174,45 +197,13 @@ class Turtle(Node):
         self.set_time()
         self.occupancy_grid_dt = self.current_wall_time - self.previous_wall_time
 
-        self.origin = msg.info.origin.position
+        self.map_origin = msg.info.origin.position
         
         self.map_meta_data = msg.info
-        self.map = (np.array(msg.data)
+        self.map_image = (np.array(msg.data)
             .reshape(self.map_meta_data.height, self.map_meta_data.width))
         
         return None
-    
-    def __local_costmap_footprint_callback(self, msg: PolygonStamped) -> None:
-        self.last_callback = self.__local_costmap_footprint_callback
-
-        self.local_costmap_footprint = msg
-
-        return None
-    
-    def __amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
-        print("amcl_pose_callback")
-        self.last_callback = self.__amcl_pose_callback            
-        
-        self.position = Point(
-            x=msg.pose.pose.position.x,
-            y=msg.pose.pose.position.y
-        )
-        self.orientation = msg.pose.pose.orientation
-        self.set_time()
-        self.odom_dt = self.current_wall_time - self.previous_wall_time
-
-        self.pose_logger.log([
-            self.get_clock().now().nanoseconds / 1e9, 
-            self.position.x, 
-            self.position.y, 
-            self.position.z, 
-            degrees(self.roll),
-            degrees(self.pitch),
-            degrees(self.yaw)
-        ])
-
-        return None
-
 
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
