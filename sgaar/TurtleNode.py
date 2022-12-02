@@ -145,26 +145,27 @@ class Turtle(Node):
     def __amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         self.last_callback = self.__amcl_pose_callback            
     
-        self.position = Point(
-            x=self.map_origin.x - msg.pose.pose.position.x,
-            y=self.map_origin.y - msg.pose.pose.position.y,
-            z=self.map_origin.z - msg.pose.pose.position.z
+        # rotate point 90 degrees clockwise
+        self.amcl_position = Point(
+            x=self.map_origin.x - -msg.pose.pose.position.y,
+            y=self.map_origin.y - msg.pose.pose.position.x,
+            z=msg.pose.pose.position.z
         )
-        print(self.position)
-        # self.position = Point(
+        # self.amcl_position = Point(
         #     x=msg.pose.pose.position.x,
         #     y=msg.pose.pose.position.y
         # )
-        self.orientation = msg.pose.pose.orientation
+        print(self.amcl_position)
+        self.amcl_orientation = msg.pose.pose.orientation
         self.set_time()
         self.amcl_dt = self.current_wall_time - self.amcl_timestamp
         self.amcl_timestamp = self.current_wall_time
 
         self.pose_logger.log([
             self.get_clock().now().nanoseconds / 1e9, 
-            self.position.x, 
-            self.position.y, 
-            self.position.z, 
+            self.amcl_position.x, 
+            self.amcl_position.y, 
+            self.amcl_position.z, 
             degrees(self.amcl_roll),
             degrees(self.amcl_pitch),
             degrees(self.amcl_yaw)
