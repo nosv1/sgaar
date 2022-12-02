@@ -147,8 +147,8 @@ class Turtle(Node):
     
         # rotate point 90 degrees clockwise
         self.amcl_position = Point(
-            x=self.map_origin.x - -msg.pose.pose.position.y,
-            y=self.map_origin.y - msg.pose.pose.position.x,
+            x=self.map_origin.x - msg.pose.pose.position.x,
+            y=self.map_origin.y - msg.pose.pose.position.y,
             z=msg.pose.pose.position.z
         )
         # self.amcl_position = Point(

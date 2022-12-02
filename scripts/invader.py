@@ -5,12 +5,13 @@ from __future__ import annotations
 # python imports
 from ament_index_python.packages import get_package_share_directory
 import json
-from math import degrees, pi
+from math import ceil, degrees, pi
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 from PIL import Image
 import cv2
+import pyvisgraph as vg
 
 # ros2 imports
 import rclpy
@@ -30,6 +31,7 @@ from SearchAlgorithms.AStar import AStar
 from SearchAlgorithms.Node import Node
 from SearchAlgorithms.Scenario import Scenario
 
+
 class Turtle(TurtleNode):
     def __init__(self, 
         heading_PID: PID, 
@@ -46,30 +48,45 @@ class Turtle(TurtleNode):
     
     def on_global_costmap_subscriber(self) -> None:
 
-        # # mirror map
+        # mirror map
         # self.map_image = np.flip(self.map_image, axis=0)
         # #rotate map 90 degrees
         # self.map_image = np.rot90(self.map_image, k=1, axes=(0, 1))
         threshold = 90
-        plt.clf()
+        # plt.clf()
         plt.imshow(self.map_image > threshold, cmap='gray', )
 
-        origin_in_pixels = (self.map_origin.x / -0.05, self.map_origin.y / -0.05, 0.0)
-        print(self.position)
+        if self.amcl_position != Point():
+            plt.scatter(self.amcl_position.x / -0.05, self.amcl_position.y / -0.05, c='r', marker='x')
 
-        # plot origin
-        plt.scatter(origin_in_pixels[0], origin_in_pixels[1], c='r')
+        img = np.array(self.map_image, dtype=np.uint8)
+        #make 3 channels
+        img = np.stack((img, img, img), axis=2)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        if self.position != Point():
-            pos_in_pixels = (self.position.x / -0.05, self.position.y / -0.05)
-            # translate pos relative to origin
-            pos_in_pixels = (origin_in_pixels[0] - pos_in_pixels[0], origin_in_pixels[1] - pos_in_pixels[1])
-           
-            
-            # plot position
-            plt.scatter(pos_in_pixels[0], pos_in_pixels[1], c='g')
-            plt.pause(0.05)
+        ret, thresh = cv2.threshold(img, 100, 255, 0)
 
+        contours, hierarchy = cv2.findContours(thresh, 1, 2)
+
+        polys = []
+        for contour in contours:
+            poly = []
+            for point in contour:
+                poly.append(vg.Point(point[0][0], point[0][1]))
+            polys.append(poly)
+            print(poly)
+        
+        # plot contours
+        for poly in polys:
+             plt.plot([p.x for p in poly], [p.y for p in poly], c='r')
+       
+        plt.pause(0.05)
+
+        return None
+    
+    def on_amcl_pose_subscriber(self) -> None:
+        # plot amcl pose
+        plt.scatter(self.amcl_position.x / - 0.05, self.amcl_position.y / -0.05, c='r', marker='x')
         return None
 
     def update(self) -> None:
@@ -78,6 +95,9 @@ class Turtle(TurtleNode):
 
         if self.last_callback == self.__global_costmap_callback:
             self.on_global_costmap_subscriber()
+        
+        if self.last_callback == self.__amcl_pose_callback:
+            self.on_amcl_pose_subscriber()
 
         return None
 
@@ -93,16 +113,13 @@ def main():
         namespace='',
         name="Invader")
 
-    for subscription in invader.subscriptions:
-        if subscription.topic_name == f"{invader.namespace}/odom":
-            invader.destroy_subscription(subscription)    
-
     while rclpy.ok():
         rclpy.spin_once(invader)
+
         invader.update()
 
-        if degrees(invader.roll) > 1:
-            break
+        # if degrees(invader.roll) > 1:
+        #     break
 
         # if round(tester.sim_elapsed_time) % 10 == 0:
         #     print(tester.sim_elapsed_time)
