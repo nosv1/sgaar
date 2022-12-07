@@ -31,6 +31,7 @@ find_package(rclpy REQUIRED)
 ament_python_install_package(${PROJECT_NAME})
 ament_python_install_package(SearchAlgorithms)
 ament_python_install_package(post_processing)
+ament_python_install_package(PythonRobotics)
 # Install Python executables
 install(PROGRAMS
   scripts/turtlebot_tester.py
