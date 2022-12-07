@@ -20,6 +20,7 @@ import rclpy
 from geometry_msgs.msg import Point
 
 # personal imports
+from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner as dpp
 from post_processing.Colors import Colors
 from sgaar.Logger import Logger
 from sgaar.math_tools import clamp
@@ -31,7 +32,6 @@ from sgaar.TurtleNode import Turtle as TurtleNode
 
 from SearchAlgorithms.AStar import AStar
 from SearchAlgorithms.Node import Node
-from SearchAlgorithms.Scenario import Scenario
 
 class Turtle(TurtleNode):
     def __init__(self, 
@@ -53,11 +53,10 @@ class Turtle(TurtleNode):
         return
     
     def on_global_costmap_subscriber(self) -> None:
-
-        # mirror map
-        # self.map_image = np.flip(self.map_image, axis=0)
-        # #rotate map 90 degrees
-        # self.map_image = np.rot90(self.map_image, k=1, axes=(0, 1))
+        
+        def yaw_from_points(p1: vg.Point, p2: vg.Point) -> float:
+            return np.arctan2(p2.y - p1.y, p2.x - p1.x)
+            
         threshold = 95
         plt.clf()
 
@@ -96,67 +95,85 @@ class Turtle(TurtleNode):
                 poly.append(vg.Point(point[0][0], point[0][1]))
             polygons.append(poly)
 
-        # i = len(polys) - 1
-        # while i >= 0:
-        #     poly = polys[i]
-        #     for point in poly:
-        #         containing_poly = g.point_in_polygon(point)
-        #         print(containing_poly)
-        #         if containing_poly != poly and containing_poly != -1:
-        #             del polys[i]
-        #             break
-        #     i -=1
-
-
         if self.start_position != Point():
-            # for i, polygon in enumerate(polygons):
-            #     parent_polgyon = polygon_crossing(
-            #         vg_Point(self.start_position.x, self.start_position.y), 
-            #         g.graph.polygons[polygon])
+            self.parent_polygon_index = -1
 
-            #     if parent_polgyon != -1:
-            #         self.parent_polygon_index = i
-
-            # HACK don't touch :)
+            g = vg.VisGraph()
             try:
-                self.parent_polygon_index = -1
-
-                g = vg.VisGraph()
                 g.build(polygons, workers=4)
+            except ZeroDivisionError:
+                return
+            except UnboundLocalError:
+                return
 
-                for polygon in g.graph.polygons:
-                    if polygon_crossing(vg.Point(self.start_position.x, self.start_position.y), g.graph.polygons[polygon]):
-                        if polygon > self.parent_polygon_index:
-                            print(polygon)
-                            self.parent_polygon_index = polygon
-                         
-                for i in range(len(polygons) - 1, -1, -1):
-                    if i != self.parent_polygon_index:
-                        if hierarchy[0][i][3] > self.parent_polygon_index + 1:
-                            del polygons[i]
-                    
-                g = vg.VisGraph()
-                g.build(polygons, workers=4)
+            for polygon in g.graph.polygons:
+                if polygon_crossing(vg.Point(self.start_position.x, self.start_position.y), g.graph.polygons[polygon]):
+                    if polygon > self.parent_polygon_index:
+                        print(polygon)
+                        self.parent_polygon_index = polygon
+                        
+            for i in range(len(polygons) - 1, -1, -1):
+                if i != self.parent_polygon_index:
+                    if hierarchy[0][i][3] > self.parent_polygon_index + 1:
+                        del polygons[i]
+                
+            g = vg.VisGraph()
+            g.build(polygons, workers=4)
 
-                # plot contours
-                for poly in polygons:
-                    plt.plot([p.x for p in poly], [p.y for p in poly], c='r')
+            # plot contours
+            for poly in polygons:
+                plt.plot([p.x for p in poly], [p.y for p in poly], c='r')
 
-                    plt.plot([poly[-1].x, poly[0].x], [poly[-1].y, poly[0].y], c='r')
+                plt.plot([poly[-1].x, poly[0].x], [poly[-1].y, poly[0].y], c='r')
 
-                # use visgraph to find a path
-                shortest: list[vg.Point] = g.shortest_path(
-                    vg.Point(self.amcl_position.x / -0.05, self.amcl_position.y / -0.05),
-                    vg.Point((self.map_origin.x - 4) / -0.05, (self.map_origin.y - -1.5) / -0.05))
-                # shortest.insert(2, vg.Point(6.5, 6.5))
-                # shortest.insert(4, vg.Point(8.5, 9.5))
-                plt.plot(
-                    [point.x for point in shortest],
-                    [point.y for point in shortest],
-                    color="#ffff00", linewidth=2)
-                plt.pause(0.001)
-            except:
-                pass
+            # use visgraph to find a path
+            shortest: list[vg.Point] = g.shortest_path(
+                vg.Point(self.amcl_position.x / -0.05, self.amcl_position.y / -0.05),
+                vg.Point((self.map_origin.x - 4) / -0.05, (self.map_origin.y - -1.5) / -0.05))
+            # shortest.insert(2, vg.Point(6.5, 6.5))
+            # shortest.insert(4, vg.Point(8.5, 9.5))
+            plt.plot(
+                [point.x for point in shortest],
+                [point.y for point in shortest],
+                color="#ffff00", linewidth=2)# connect the points with dubins curves
+
+            path_x = []
+            path_y = []
+
+            for i, point in enumerate(shortest[:-1]):
+                start = point
+                end = shortest[i + 1]
+                start_yaw = (yaw_from_points(start, end) 
+                    if i > 0 
+                    else self.amcl_yaw)
+                end_yaw = (yaw_from_points(end, shortest[i + 2]) 
+                    if i < len(shortest) - 2 
+                    else np.deg2rad(0))
+                radius = (1 / 0.05) * 0.33
+                curvature = 1 / radius
+                step_size = 1 * 0.05
+                edge_x, edge_y, path_yaw, mode, _ = dpp.plan_dubins_path(
+                    start.x,
+                    start.y,
+                    start_yaw,
+                    end.x,
+                    end.y,
+                    end_yaw,
+                    curvature,
+                    step_size)
+
+                path_x.extend(edge_x)
+                path_y.extend(edge_y)
+
+                # highlighting points that are invliad
+                # for x, y in zip(path_x, path_y):
+                #     p = vg.Point(x, y)
+                #     if g.point_in_polygon(p) != -1:
+                #         plt.plot(x, y, "o", color=Colors.light_purple)
+
+            plt.plot(path_x, path_y, color=Colors.light_blue, marker="o", markersize=1)
+
+            plt.pause(0.001)
         return None
     
     def on_amcl_pose_subscriber(self) -> None:

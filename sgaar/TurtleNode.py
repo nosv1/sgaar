@@ -17,6 +17,7 @@ from sensor_msgs.msg import LaserScan
 from sgaar.DetectedObject import DetectedObject
 from sgaar.Logger import Logger
 from sgaar.Point import Point as support_module_Point
+from sgaar.quaternion_tools import euler_from_quaternion
 
 class Turtle(Node):
     def __init__(self, namespace='', name='Turtle') -> None:
@@ -151,12 +152,15 @@ class Turtle(Node):
             y=self.map_origin.y - msg.pose.pose.position.y,
             z=msg.pose.pose.position.z
         )
-        # self.amcl_position = Point(
-        #     x=msg.pose.pose.position.x,
-        #     y=msg.pose.pose.position.y
-        # )
-        print(self.amcl_position)
         self.amcl_orientation = msg.pose.pose.orientation
+        
+        self.amcl_roll, self.amcl_pitch, self.amcl_yaw = euler_from_quaternion(
+            x=self.amcl_orientation.x,
+            y=self.amcl_orientation.y,
+            z=self.amcl_orientation.z,
+            w=self.amcl_orientation.w
+        )
+
         self.set_time()
         self.amcl_dt = self.current_wall_time - self.amcl_timestamp
         self.amcl_timestamp = self.current_wall_time
