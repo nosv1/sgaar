@@ -44,6 +44,8 @@ class Turtle(TurtleNode):
 
         self.start_position: Point = Point()
         self.parent_polygon_index: int = None
+
+        self.prev_map = None
         
         return None
 
@@ -58,7 +60,15 @@ class Turtle(TurtleNode):
         # self.map_image = np.rot90(self.map_image, k=1, axes=(0, 1))
         threshold = 95
         plt.clf()
-        plt.imshow(self.map_image > threshold, cmap='gray', )
+
+        if self.prev_map is not None:
+            diff = np.abs(self.prev_map ^ (self.map_image > threshold))
+            plt.imshow(diff, cmap='gray')
+
+        self.prev_map = self.map_image > threshold
+
+        # plt.imshow(self.map_image > threshold, cmap='gray', )
+        
 
         if self.amcl_position != Point():
             plt.scatter(self.amcl_position.x / -0.05, self.amcl_position.y / -0.05, c='r', marker='x')
@@ -76,7 +86,7 @@ class Turtle(TurtleNode):
 
         ret, thresh = cv2.threshold(img, threshold, 255, 0)
 
-        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, 2)
+        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         print(hierarchy)
 
         polygons = []
@@ -85,10 +95,6 @@ class Turtle(TurtleNode):
             for point in contour:
                 poly.append(vg.Point(point[0][0], point[0][1]))
             polygons.append(poly)
-             
-        # construct a visibility graph
-        g = vg.VisGraph()
-        g.build(polygons)  # can use workers=4 for multiprocessing
 
         # i = len(polys) - 1
         # while i >= 0:
@@ -112,35 +118,45 @@ class Turtle(TurtleNode):
             #         self.parent_polygon_index = i
 
             # HACK don't touch :)
-            self.parent_polygon_index = 1
-        
-            for i in range(len(polygons) - 1, 0, -1):
-                if i != self.parent_polygon_index:
-                    if hierarchy[0][i][3] > self.parent_polygon_index + 1:
-                        del polygons[i]
+            try:
+                self.parent_polygon_index = -1
 
-        g = vg.VisGraph()
-        g.build(polygons)
+                g = vg.VisGraph()
+                g.build(polygons, workers=4)
 
-        # plot contours
-        for poly in polygons:
-             plt.plot([p.x for p in poly], [p.y for p in poly], c='r')
+                for polygon in g.graph.polygons:
+                    if polygon_crossing(vg.Point(self.start_position.x, self.start_position.y), g.graph.polygons[polygon]):
+                        if polygon > self.parent_polygon_index:
+                            print(polygon)
+                            self.parent_polygon_index = polygon
+                         
+                for i in range(len(polygons) - 1, -1, -1):
+                    if i != self.parent_polygon_index:
+                        if hierarchy[0][i][3] > self.parent_polygon_index + 1:
+                            del polygons[i]
+                    
+                g = vg.VisGraph()
+                g.build(polygons, workers=4)
 
-             plt.plot([poly[-1].x, poly[0].x], [poly[-1].y, poly[0].y], c='r')
+                # plot contours
+                for poly in polygons:
+                    plt.plot([p.x for p in poly], [p.y for p in poly], c='r')
 
-        # use visgraph to find a path
-        shortest: list[vg.Point] = g.shortest_path(
-            vg.Point(self.amcl_position.x / -0.05, self.amcl_position.y / -0.05),
-            vg.Point((self.map_origin.x - 4) / -0.05, (self.map_origin.y - -1.5) / -0.05))
-        # shortest.insert(2, vg.Point(6.5, 6.5))
-        # shortest.insert(4, vg.Point(8.5, 9.5))
-        plt.plot(
-            [point.x for point in shortest],
-            [point.y for point in shortest],
-            color="#ffff00", linewidth=2)
-       
-        plt.pause(0.05)
+                    plt.plot([poly[-1].x, poly[0].x], [poly[-1].y, poly[0].y], c='r')
 
+                # use visgraph to find a path
+                shortest: list[vg.Point] = g.shortest_path(
+                    vg.Point(self.amcl_position.x / -0.05, self.amcl_position.y / -0.05),
+                    vg.Point((self.map_origin.x - 4) / -0.05, (self.map_origin.y - -1.5) / -0.05))
+                # shortest.insert(2, vg.Point(6.5, 6.5))
+                # shortest.insert(4, vg.Point(8.5, 9.5))
+                plt.plot(
+                    [point.x for point in shortest],
+                    [point.y for point in shortest],
+                    color="#ffff00", linewidth=2)
+                plt.pause(0.001)
+            except:
+                pass
         return None
     
     def on_amcl_pose_subscriber(self) -> None:
