@@ -1,5 +1,6 @@
 # python imports
 from array import array
+import cv2 as cv
 from math import degrees, isinf, radians
 import numpy as np
 
@@ -123,12 +124,19 @@ class Turtle(Node):
     # Callbacks
     def __odom_callback(self, msg: Odometry) -> None:
         self.last_callback = self.__odom_callback
-
         self.odom_position = Point(
             x=msg.pose.pose.position.x,
             y=msg.pose.pose.position.y
         )
-        self.orientation = msg.pose.pose.orientation
+        self.odom_orientation = msg.pose.pose.orientation
+        
+        self.odom_roll, self.odom_pitch, self.odom_yaw= euler_from_quaternion(
+            x=self.odom_orientation.x,
+            y=self.odom_orientation.y,
+            z=self.odom_orientation.z,
+            w=self.odom_orientation.w
+        )
+
         self.set_time()
         self.odom_dt = self.current_wall_time - self.odom_timestamp
         self.odom_timestamp = self.current_wall_time
@@ -146,13 +154,9 @@ class Turtle(Node):
     def __amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         self.last_callback = self.__amcl_pose_callback            
     
-        # rotate point 90 degrees clockwise
-        self.amcl_position = Point(
-            x=self.map_origin.x - msg.pose.pose.position.x,
-            y=self.map_origin.y - msg.pose.pose.position.y,
-            z=msg.pose.pose.position.z
-        )
+        self.amcl_position = msg.pose.pose.position
         self.amcl_orientation = msg.pose.pose.orientation
+
         
         self.amcl_roll, self.amcl_pitch, self.amcl_yaw = euler_from_quaternion(
             x=self.amcl_orientation.x,
@@ -227,7 +231,8 @@ class Turtle(Node):
         self.map_meta_data = msg.info
         self.map_image = (np.array(msg.data)
             .reshape(self.map_meta_data.height, self.map_meta_data.width))
-        
+
+        self.map_image = cv.flip(self.map_image, flipCode=0, dst=self.map_image)        
         return None
 
 
