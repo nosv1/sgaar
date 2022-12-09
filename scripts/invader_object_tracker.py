@@ -7,23 +7,23 @@ from geometry_msgs.msg import Point
 import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
-from threading import Thread
 
-class ObjectTracker(Thread):
-    def __init__(self, map_image: np.ndarray, pixel_threshold: float, distance_threshold: float) -> None:
+import pyvisgraph as vg
+from pyvisgraph.visible_vertices import polygon_crossing
+
+class ObjectTracker:
+    def __init__(self, start_position: Point, map_image: np.ndarray, pixel_threshold: float, distance_threshold: float) -> None:
         """
         pixel_threshold is the threshold for the pixel values in percentage of white
         distance_threshold is how far the centers can be before they're classified as different objects
         """
         super().__init__()
+        self.start_position = start_position
         self.map_image: np.ndarray = map_image
         self.pixel_threshold: float = pixel_threshold
         self.distance_threshold: float = distance_threshold
 
         self.detected_objects: dict[str, tuple[int, int]] = {}
-
-        self.daemon = True
-        self.runnable = self.run
 
         return None
 
@@ -33,36 +33,44 @@ class ObjectTracker(Thread):
         """
         
         # Threshold the image
-        # set all pixels below the threshold to 0 and above to 1
-        self.map_image = np.array(self.map_image, dtype=np.uint8)
-        _, self.map_image = cv.threshold(self.map_image, self.pixel_threshold, 255, cv.THRESH_BINARY)
-        contours, _ = cv.findContours(self.map_image, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+
+        contours, hierarchy = cv.findContours(self.map_image, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+        # contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, 2)
+
+        # polygons = []
+        # for contour in contours:
+        #     poly = []
+        #     for i, edge in enumerate(contour):
+        #         poly.append(vg.Point(edge[0][0], edge[0][1]))
+        #     # connect the last point to the first point
+        #     # poly.append(vg.Point(contour[-1][0][1], contour[0][0][0]))
+        #     polygons.append(poly)
+
+        # if self.start_position != Point():
+        #     self.parent_polygon_index = -1
+
+        #     g = vg.VisGraph()
+        #     try:
+        #         g.build(polygons, workers=4)
+        #     except ZeroDivisionError:
+        #         return
+        #     except UnboundLocalError:
+        #         return
+
+        #     for polygon in g.graph.polygons:
+        #         if polygon_crossing(vg.Point(self.start_position.x, self.start_position.y), g.graph.polygons[polygon]):
+        #             if polygon > self.parent_polygon_index:
+        #                 self.parent_polygon_index = polygon
+                        
+        #     for i in range(len(polygons) - 1, -1, -1):
+        #         if i != self.parent_polygon_index:
+        #             if hierarchy[0][i][3] > self.parent_polygon_index + 1:
+        #                 del polygons[i]
 
         plt.imshow(self.map_image)
-        
-        polygons = []
+
+        # plot the edges of the contours
+        # plot the centers of the contours
         for contour in contours:
-            polygon = []
-            for point in contour:
-                polygon.append(Point(x=float(point[0][0]), y=float(point[0][1])))
-            plt.plot(
-                [point.x for point in polygon],
-                [point.y for point in polygon],
-                color="red"
-            )
-
-        # STOPED HERE... ONLY CARE ABOUT POLYGONS ON MY LEVEL
-
-        plt.pause(0.001)
-
-        for contour in contours:
-            M = cv.moments(contour)
-            if M["m00"] != 0:
-                cx = int(M["m10"] / M["m00"])
-                cy = int(M["m01"] / M["m00"])
-                self.detected_objects[str((cx, cy))] = contour
-
-    def run(self) -> None:
-        self.detect_objects()
-
-        return None
+            plt.plot(contour[:, 0, 0], contour[:, 0, 1], 'k-')
+            plt.plot(np.mean(contour[:, 0, 0]), np.mean(contour[:, 0, 1]), 'ro')

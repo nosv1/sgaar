@@ -4,7 +4,7 @@ from __future__ import annotations
 
 # python imports
 from ament_index_python.packages import get_package_share_directory
-import cv2
+import cv2 as cv
 import json
 from math import ceil, degrees, pi
 import matplotlib.pyplot as plt
@@ -108,12 +108,6 @@ class Turtle(TurtleNode):
         
         return None
 
-    def path_callback(self, path: list[Point]) -> None:
-        self.waypoints = [Point(x=point.x, y=point.y) for point in path]
-        self.current_waypoint_index = len(self.waypoints) - 1
-        self.current_waypoint = self.waypoints[self.current_waypoint_index]
-        return None
-
     def switch_waypoint(self, position: Point):
         """
         try to switch to next waypoint if within waypoint's radius
@@ -179,13 +173,6 @@ class Turtle(TurtleNode):
         return
     
     def on_global_costmap_callback(self) -> None:
-
-        if not self.astar_thread is None:
-            return
-
-        # if not self.object_tracker_thread is None:
-        #     return
-
         if self.amcl_position == Point():
             return
 
@@ -207,8 +194,17 @@ class Turtle(TurtleNode):
         beer_can_radius: int = 10  # pixels
         step_size: float = 0.33  # meters
 
+        self.map_image = np.array(self.map_image, dtype=np.uint8)
+        _, self.map_image = cv.threshold(self.map_image, threshold, 255, cv.THRESH_BINARY)
+
+        if self.object_tracker_thread is not None:
+            return
+
         # map image goes in as values from 0 - 100, comes out as 0's and 1's based on threshold percentage
-        # self.object_tracker = ObjectTracker(self.map_image, threshold, 10)
+        self.object_tracker = ObjectTracker(self.start_position, self.map_image, threshold, 10)
+
+        if self.astar_thread is not None:
+            return
 
         self.astar = AStar(
             start=self.start_position,
@@ -217,17 +213,14 @@ class Turtle(TurtleNode):
                 self.beer_can_in_pixels.y, 
                 0, 0, 
                 radius=beer_can_radius),
-            # map_image=self.object_tracker.map_image,  # HACK HACK HACK HACK
-            map_image=self.map_image > threshold,
+            map_image=self.object_tracker.map_image,  # HACK HACK HACK HACK
+            # map_image=self.map_image > threshold,
             step_size=1 / self.map_meta_data.resolution * step_size)
-
-        # self.object_tracker_thread = Thread(target=self.object_tracker.run)
-        # self.object_tracker_thread.start()
             
-        plt.imshow(self.astar.map_image, cmap='gray')
+        # plt.imshow(self.astar.map_image, cmap='gray')
         plt.scatter(self.astar.start.x, self.astar.start.y, c='c')
         plt.scatter(self.astar.goal.x, self.astar.goal.y, c='r')
-        plt.pause(0.0001)
+        # plt.pause(0.0001)
 
         # if below returns true, we would fail A* because we currently think 
         # we're in an obstacle.
@@ -235,7 +228,10 @@ class Turtle(TurtleNode):
         if self.astar.map_image[int(self.astar.start.y)][int(self.astar.start.x)]:
             return
 
-        self.astar_thread = Thread(target=self.astar.run)
+        self.object_tracker_thread = Thread(target=self.object_tracker.detect_objects)
+        self.object_tracker_thread.start()
+
+        self.astar_thread = Thread(target=self.astar.plan_path)
         self.astar_thread.start()
 
         # path: list[Point] = self.a_star(self.start_position, self.beer_can_in_pixels, map_image)
@@ -293,10 +289,12 @@ def main():
 
         invader.update()
 
-        # if invader.object_tracker_thread is not None:
-        #     invader.object_tracker_thread.join(timeout=0.0)
-        #     if not invader.object_tracker_thread.is_alive():
-        #         invader.object_tracker_thread = None
+        if invader.object_tracker_thread is not None:
+            invader.object_tracker_thread.join(timeout=0.0)
+            if not invader.object_tracker_thread.is_alive():
+                invader.object_tracker_thread = None
+                plt.pause(0.0001)
+                # plt.clf()
         
         if invader.astar_thread is not None:
             invader.astar_thread.join(timeout=0.0)

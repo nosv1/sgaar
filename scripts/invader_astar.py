@@ -31,7 +31,7 @@ class AStarPoint(Point):
     def distance_to(self, other: Point):
         return np.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
 
-class AStar(Thread):
+class AStar:
     def __init__(self, start: Point, goal: AStarPoint, map_image: np.ndarray, step_size: float = 1):
         super().__init__()
         self.start: AStarPoint = AStarPoint(start.x, start.y, 0, 0)
@@ -55,9 +55,6 @@ class AStar(Thread):
             (-self.step_size, 0),  # left
             (self.step_size, 0),   # right
         ]
-
-        self.runnable = self.run
-        self.daemon = True
 
     def add_neighbors_to_open_set(self):
 
@@ -96,7 +93,7 @@ class AStar(Thread):
 
         return None
         
-    def run(self):
+    def plan_path(self):
         while self.current_point.distance_to(self.goal) > self.step_size:
         # while self.current_point != self.goal:
             self.add_neighbors_to_open_set()
