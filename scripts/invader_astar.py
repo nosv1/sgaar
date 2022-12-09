@@ -32,38 +32,36 @@ class AStarPoint(Point):
         return np.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
 
 class AStar(Thread):
-    def __init__(self, start: Point, goal: AStarPoint, map_image: np.ndarray):
+    def __init__(self, start: Point, goal: AStarPoint, map_image: np.ndarray, step_size: float = 1):
         super().__init__()
         self.start: AStarPoint = AStarPoint(start.x, start.y, 0, 0)
         self.goal: AStarPoint = goal
         self.map_image = map_image
+        self.step_size = step_size
 
         self.current_point: AStarPoint = self.start
         self.open_set: dict[str, AStarPoint] = {self.current_point.key: self.current_point}
         self.closed_set: dict[str, AStarPoint] = {}
         self.path: list[AStarPoint] = []
+        
+        diaganol_leg_distance = np.sqrt(0.5 * self.step_size**2)
+        self.move_list = [
+            (-diaganol_leg_distance, -diaganol_leg_distance),  # top left
+            (-diaganol_leg_distance, diaganol_leg_distance),   # bottom left
+            (diaganol_leg_distance, -diaganol_leg_distance),   # top right
+            (diaganol_leg_distance, diaganol_leg_distance),    # bottom right
+            (0, -self.step_size),  # up
+            (0, self.step_size),   # down
+            (-self.step_size, 0),  # left
+            (self.step_size, 0),   # right
+        ]
 
         self.runnable = self.run
         self.daemon = True
 
     def add_neighbors_to_open_set(self):
-        diagnoal_moves = [
-            (-1, -1),  # top left
-            (-1, 1),   # top right
-            (1, -1),   # bottom left
-            (1, 1),    # bottom right
-        ]
-        
-        move_list = [
-            (0, -1),  # up
-            (0, 1),   # down
-            (-1, 0),  # left
-            (1, 0),   # right
-        ]
-        
-        move_list += diagnoal_moves
 
-        for move in move_list:
+        for move in self.move_list:
             neighbor: AStarPoint = AStarPoint(
                 self.current_point.x + move[0],
                 self.current_point.y + move[1],
@@ -99,7 +97,8 @@ class AStar(Thread):
         return None
         
     def run(self):
-        while self.current_point != self.goal:
+        while self.current_point.distance_to(self.goal) > self.step_size:
+        # while self.current_point != self.goal:
             self.add_neighbors_to_open_set()
             del self.open_set[self.current_point.key]
             self.closed_set[self.current_point.key] = self.current_point

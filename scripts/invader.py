@@ -23,6 +23,7 @@ from nav_msgs.msg import MapMetaData
 
 # personal imports
 from invader_astar import AStar, AStarPoint
+from invader_object_tracker import ObjectTracker
 
 from PythonRobotics.PathPlanning.DubinsPath import dubins_path_planner as dpp
 from post_processing.Colors import Colors
@@ -96,7 +97,10 @@ class Turtle(TurtleNode):
         self.path_complete: bool = False
 
         self.astar: AStar = None
-        self.path_thread: AStar|Thread = None
+        self.astar_thread: Thread = None
+
+        self.object_tracker: ObjectTracker = None
+        self.object_tracker_thread: Thread = None
 
         self.initalizing: bool = True
 
@@ -117,12 +121,12 @@ class Turtle(TurtleNode):
         self.current_waypoint: Point = self.waypoints[self.current_waypoint_index]
 
         i = self.current_waypoint_index
-        while i > 0:
+        while i >= 0:
         # while i < len(self.waypoints) - 1:
             distance_to_waypoint: float = (distance_to(self.current_waypoint, position) 
                 * self.map_meta_data.resolution)
-            if distance_to_waypoint < 0.5:
-
+            if ((not not i and distance_to_waypoint < 0.5)
+                or (not i and distance_to_waypoint < 0.1)):
                 self.heading_PID.prev_error = 0.0
                 self.heading_PID.integral = 0.0
                 if not self.path_complete:
@@ -176,6 +180,12 @@ class Turtle(TurtleNode):
     
     def on_global_costmap_callback(self) -> None:
 
+        if not self.astar_thread is None:
+            return
+
+        # if not self.object_tracker_thread is None:
+        #     return
+
         if self.amcl_position == Point():
             return
 
@@ -193,28 +203,40 @@ class Turtle(TurtleNode):
         self.start_position = world_to_pixel_coordinates(
             self.amcl_position, self.map_origin, self.map_meta_data)
 
-        threshold: int = 85
-        beer_can_radius: int = 10
-        if self.path_thread is None:
-            self.astar = AStar(
-                start=self.start_position,
-                goal=AStarPoint(
-                    self.beer_can_in_pixels.x, 
-                    self.beer_can_in_pixels.y, 
-                    0, 0, 
-                    radius=beer_can_radius),
-                map_image=self.map_image > threshold)
-                
-            plt.imshow(self.astar.map_image, cmap='gray')
-            plt.scatter(self.astar.start.x, self.astar.start.y, c='g')
-            plt.scatter(self.astar.goal.x, self.astar.goal.y, c='r')
-            plt.pause(0.0001)
+        threshold: int = 85  # inflation radius, occupancy grid gives 0 - 100 % probability of obstacle
+        beer_can_radius: int = 10  # pixels
+        step_size: float = 0.33  # meters
 
-            if self.astar.map_image[int(self.astar.start.y)][int(self.astar.start.x)]:  # if neighbor is a wall
-                return
+        # map image goes in as values from 0 - 100, comes out as 0's and 1's based on threshold percentage
+        # self.object_tracker = ObjectTracker(self.map_image, threshold, 10)
 
-            self.path_thread = Thread(target=self.astar.run)
-            self.path_thread.start()
+        self.astar = AStar(
+            start=self.start_position,
+            goal=AStarPoint(
+                self.beer_can_in_pixels.x, 
+                self.beer_can_in_pixels.y, 
+                0, 0, 
+                radius=beer_can_radius),
+            # map_image=self.object_tracker.map_image,  # HACK HACK HACK HACK
+            map_image=self.map_image > threshold,
+            step_size=1 / self.map_meta_data.resolution * step_size)
+
+        # self.object_tracker_thread = Thread(target=self.object_tracker.run)
+        # self.object_tracker_thread.start()
+            
+        plt.imshow(self.astar.map_image, cmap='gray')
+        plt.scatter(self.astar.start.x, self.astar.start.y, c='c')
+        plt.scatter(self.astar.goal.x, self.astar.goal.y, c='r')
+        plt.pause(0.0001)
+
+        # if below returns true, we would fail A* because we currently think 
+        # we're in an obstacle.
+        # if self.astar.map_image[int(self.astar.start.y)][int(self.astar.start.x)] == 255:  # HACK HACK HACK HACK, change in invader_astar too
+        if self.astar.map_image[int(self.astar.start.y)][int(self.astar.start.x)]:
+            return
+
+        self.astar_thread = Thread(target=self.astar.run)
+        self.astar_thread.start()
 
         # path: list[Point] = self.a_star(self.start_position, self.beer_can_in_pixels, map_image)
 
@@ -263,24 +285,26 @@ def main():
         namespace='',
         name="Invader")
 
-    invader.max_speed = 0.11
-    invader.max_turn_rate = 0.7
-
-    # try to join the path thread whenever it's finished
+    # invader.max_speed = 0.11
+    # invader.max_turn_rate = 0.7
 
     while rclpy.ok():
         rclpy.spin_once(invader)
 
         invader.update()
+
+        # if invader.object_tracker_thread is not None:
+        #     invader.object_tracker_thread.join(timeout=0.0)
+        #     if not invader.object_tracker_thread.is_alive():
+        #         invader.object_tracker_thread = None
         
-        if invader.path_thread is not None:
-            invader.path_thread.join(timeout=0.0)
-            if not invader.path_thread.is_alive():
-                invader.path_thread = None
+        if invader.astar_thread is not None:
+            invader.astar_thread.join(timeout=0.0)
+            if not invader.astar_thread.is_alive():
+                invader.astar_thread = None
                 invader.waypoints = invader.astar.path
                 invader.current_waypoint_index = len(invader.waypoints) - 1
                 invader.current_waypoint = invader.waypoints[invader.current_waypoint_index]
-                plt.imshow(invader.map_image > 85, cmap='gray')
                 plt.plot(
                     [p.x for p in invader.astar.closed_set.values()], 
                     [p.y for p in invader.astar.closed_set.values()], 'b.')
@@ -290,13 +314,6 @@ def main():
                 plt.plot([p.x for p in invader.waypoints], [p.y for p in invader.waypoints], 'r')
                 plt.pause(0.0001)
                 plt.clf()
-
-        # if degrees(invader.roll) > 1:
-        #     break
-
-        # if round(tester.sim_elapsed_time) % 10 == 0:
-        #     print(tester.sim_elapsed_time)
-        #     tester.dump_point_cloud(filename=f"{tester.name}_point_cloud.csv")
 
         if invader.path_complete:
             invader.twist.linear.x = 0.0
