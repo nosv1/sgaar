@@ -115,22 +115,23 @@ class Turtle(TurtleNode):
         self.current_waypoint: Point = self.waypoints[self.current_waypoint_index]
 
         i = self.current_waypoint_index
-        while i >= 0:
-        # while i < len(self.waypoints) - 1:
+        # while i >= 0:
+        while i < len(self.waypoints) - 1:
             distance_to_waypoint: float = (distance_to(self.current_waypoint, position) 
                 * self.map_meta_data.resolution)
-            if ((not not i and distance_to_waypoint < 0.5)
-                or (not i and distance_to_waypoint < 0.1)):
+            if distance_to_waypoint < 0.1:
+            # if ((not not i and distance_to_waypoint < 0.5)
+            #     or (not i and distance_to_waypoint < 0.1)):
                 self.heading_PID.prev_error = 0.0
                 self.heading_PID.integral = 0.0
                 if not self.path_complete:
-                    self.current_waypoint_index += -1
+                    self.current_waypoint_index += 1
                     self.current_waypoint = self.waypoints[self.current_waypoint_index]
                     # print(
                     #     f"Next Waypoint {self.current_waypoint_index + 1} / {len(self.waypoints)}: {self.current_waypoint}"
                     # )
-                # i += 1
-                i -= 1
+                i += 1
+                # i -= 1
                 continue
             return
 
@@ -192,7 +193,7 @@ class Turtle(TurtleNode):
 
         threshold: int = 85  # inflation radius, occupancy grid gives 0 - 100 % probability of obstacle
         beer_can_radius: int = 10  # pixels
-        step_size: float = 0.33  # meters
+        step_size: float = 1 / self.map_meta_data.resolution * (0.33 * 1)  # pixels from meters, 0.33m is turn radius
 
         self.map_image = np.array(self.map_image, dtype=np.uint8)
         _, self.map_image = cv.threshold(self.map_image, threshold, 255, cv.THRESH_BINARY)
@@ -206,20 +207,27 @@ class Turtle(TurtleNode):
         if self.astar_thread is not None:
             return
 
+        # goal approach angle
+        goal_approach_angle: float = 90.0  # degrees
+        # get point step size away from beer_can in direction of goal_approach_angle
+        goal_approach_point: Point = Point(
+            x=self.beer_can_in_pixels.x + step_size * np.cos(np.radians(goal_approach_angle)),
+            y=self.beer_can_in_pixels.y + step_size * np.sin(np.radians(goal_approach_angle)))
+
         self.astar = AStar(
-            start=self.start_position,
+            start=goal_approach_point,
             goal=AStarPoint(
-                self.beer_can_in_pixels.x, 
-                self.beer_can_in_pixels.y, 
-                0, 0, 
-                radius=beer_can_radius),
+                self.start_position.x,
+                self.start_position.y,
+                0, 0),
             map_image=self.object_tracker.map_image,  # HACK HACK HACK HACK
             # map_image=self.map_image > threshold,
-            step_size=1 / self.map_meta_data.resolution * step_size)
+            grid_spacing=1,
+            step_size=step_size)
             
         # plt.imshow(self.astar.map_image, cmap='gray')
-        plt.scatter(self.astar.start.x, self.astar.start.y, c='c')
-        plt.scatter(self.astar.goal.x, self.astar.goal.y, c='r')
+        plt.scatter(self.astar.start.x, self.astar.start.y, c='r')
+        plt.scatter(self.astar.goal.x, self.astar.goal.y, c='c')
         # plt.pause(0.0001)
 
         # if below returns true, we would fail A* because we currently think 
@@ -300,15 +308,17 @@ def main():
             invader.astar_thread.join(timeout=0.0)
             if not invader.astar_thread.is_alive():
                 invader.astar_thread = None
-                invader.waypoints = invader.astar.path
-                invader.current_waypoint_index = len(invader.waypoints) - 1
+                invader.waypoints = invader.astar.path[3:]
+                invader.waypoints.append(invader.beer_can_in_pixels)
+                # invader.current_waypoint_index = len(invader.waypoints) - 1
+                invader.current_waypoint_index = 0
                 invader.current_waypoint = invader.waypoints[invader.current_waypoint_index]
-                plt.plot(
-                    [p.x for p in invader.astar.closed_set.values()], 
-                    [p.y for p in invader.astar.closed_set.values()], 'b.')
-                plt.plot(
-                    [p.x for p in invader.astar.open_set.values()],
-                    [p.y for p in invader.astar.open_set.values()], 'g.')
+                # plt.plot(
+                #     [p.x for p in invader.astar.closed_set.values()], 
+                #     [p.y for p in invader.astar.closed_set.values()], 'b.')
+                # plt.plot(
+                #     [p.x for p in invader.astar.open_set.values()],
+                #     [p.y for p in invader.astar.open_set.values()], 'g.')
                 plt.plot([p.x for p in invader.waypoints], [p.y for p in invader.waypoints], 'r')
                 plt.pause(0.0001)
                 plt.clf()
